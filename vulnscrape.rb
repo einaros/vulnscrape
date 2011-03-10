@@ -34,7 +34,7 @@ class String
   def each_match regex, &block
     md = regex.match(self)
     offset = 0
-    while not md.nil?
+    while md
       block.call(md, offset + md.offset(0)[0])
       offset += md.offset(0)[1]
       md = regex.match(md.post_match)
@@ -44,7 +44,7 @@ class String
     md = regex.match(self)
     offset = 0
     a = []
-    while not md.nil?
+    while md
       a << block.call(md, offset + md.offset(0)[0])
       offset += md.offset(0)[1]
       md = regex.match(md.post_match)
@@ -111,7 +111,7 @@ class Page
   end
   private
   def self.log *args
-    @@logger.call(*args) unless @@logger.nil?
+    @@logger.call(*args) if @@logger
   end
 end
 
@@ -209,13 +209,13 @@ class LinkCollector
     regex = /('|")((https?:\/\/|\/)[^<>\[\]\r\n]*?)\1/
     md = regex.match(page.response.body)
     urls = []
-    while not md.nil?
+    while md
       url = md.to_s[1..-2]
       # ignore slash only urls
       if not url.gsub(/\//, '').empty?
         # verify that the url is parsable
         uri = Addressable::URI.parse(url) rescue nil
-        urls << url if not uri.nil?
+        urls << url if uri
       end
       body = md.post_match
       md = regex.match(body)
@@ -226,11 +226,11 @@ class LinkCollector
     regex = /('|")?((https?:\/\/|\/\/)[^<>\[\]\s\n\r]+?)(\1|\n|\r|<|>|\[|\]|\s)/
     md = regex.match(body)
     urls = []
-    while not md.nil?
+    while md
       url = md.captures[1]
       # verify that the url is parsable
       uri = Addressable::URI.parse(url) rescue nil
-      urls << url if not uri.nil?
+      urls << url if uri
       body = md.post_match
       md = regex.match(body)
     end
@@ -242,7 +242,7 @@ module Scanner
   def self.content_type response, body_index
     return :js if response.content_type.downcase.include?('javascript')
     m = response.body[0..body_index].match(/.*<(\/?)script/im)
-    return :js if not m.nil? and m[1].empty?
+    return :js if m and m[1].empty?
     return :js if response.body[0..body_index].match(/.*'\s*javascript:([^']|\\')*\Z/im)
     return :js if response.body[0..body_index].match(/.*"\s*javascript:([^"]|\\")*\Z/im)
     :text
@@ -282,7 +282,7 @@ module Scanner
         qv[key] = magic
         test_uri.query_values = qv
         vuln = single_run(test_uri.to_s, magic_test)
-        hits << "#{vuln} at #{test_uri.to_s}" if not vuln.nil?
+        hits << "#{vuln} at #{test_uri.to_s}" if vuln
       end
       hits
     end
@@ -350,12 +350,12 @@ module Scanner
       injection_headers = InjectionHeader.generate_from(headers)
       page = Page.open(uri.to_s, injection_headers.map { |i| i.get_header }.reduce(:merge))
       vuln_headers = []
-      if not page.nil?
+      if page
         regex = Regexp.new('\<script\>alert\([a-z]{5}\)\<\/script\>')
         match = regex.match(page.response.body)
-        while not match.nil?
+        while match
           successful_injection = injection_headers.find { |v| v.value == match.to_s }
-          vuln_headers << successful_injection.name if not successful_injection.nil?
+          vuln_headers << successful_injection.name if successful_injection
           match = regex.match(match.post_match)
         end
       end
@@ -512,7 +512,7 @@ class VulnScrape
   end
   def show_crossdomain_policy
     crossdom = Scanner::get_crossdomain_allows(@target)
-    if not crossdom.nil? and crossdom.count > 0
+    if crossdom and crossdom.count > 0
       puts "crossdomain.xml allows swf posts from:"
       crossdom.each { |e| puts "  #{e}" }
       puts
