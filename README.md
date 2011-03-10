@@ -1,7 +1,6 @@
 ## Author
 
-Einar Otto Stangvik (einar@indev.no)
-http://codefornuts.com
+Einar Otto Stangvik <einar@indev.no> <http://codefornuts.com>
 
 ## About
 
