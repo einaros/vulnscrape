@@ -36,3 +36,7 @@ Will scrape http://mydomain.com for at least 50 urls, and start running various 
 
 Will start scraping at http://services.mydomain.com, and only follow (continue scraping) urls on that subdomain. All links from
 all mydomain.com subdomains will eventually be run through the heuristics scanner.
+
+    ./vulnscrape.rb -u http://xss.progphp.com -h
+
+Includes header heuristics, as demonstrated by a few of the XSS vectors on the progphp test site.
