@@ -239,7 +239,7 @@ class LinkCollector
 end
 
 module Scanner
-  def self.content_type response, body_index
+  def self.content_type? response, body_index
     return :js if response.content_type.downcase.include?('javascript')
     m = response.body[0..body_index].match(/.*<(\/?)script/im)
     return :js if m and m[1].empty?
@@ -321,24 +321,24 @@ module Scanner
       match != nil
     end
     def has_backslash? uri, qv, key
-      magic = String.random(10)
-      qv[key] = magic + '\\'
+      magic = String.random(10) + '\\' + 'b'
+      qv[key] = magic
       uri.query_values = qv
       page = Page.open(uri.to_s)
       return false if page.nil? or page.response.body.nil?
       page.response.body.map_match(Regexp.new("('[^\\n']*#{magic}\\\\[^'\\\\]*'|\"[^\\n\"]*#{magic}\\\\[^\"\\\\]*\")")) do |m, o| 
-        Scanner.content_type(page.response, o)
+        Scanner.content_type?(page.response, o)
       end.any? { |e| e == :js }
     end
     def has_quote? uri, qv, key
-      ['\'', '"'].any? do |e|
+      ['\'\'', '""'].any? do |e|
         magic = String.random(10) + e
         qv[key] = magic
         uri.query_values = qv
         page = Page.open(uri.to_s)      
         return false if page.nil?
         page.response.body.map_match(Regexp.new("[^\\n#{e}]*#{magic}[^#{e}]*#{e}")) do |m, o| 
-          Scanner.content_type(page.response, o)
+          Scanner.content_type?(page.response, o)
         end.any? { |e| e == :js }
       end
     end
