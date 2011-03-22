@@ -151,10 +151,13 @@ class LinkCollector
       script_links = filter_urls(baseuri, scripts.map { |s| scrape_script(s.to_s) }.flatten, filter_options)
       forms = filter_urls(baseuri, collect_forms(doc), filter_options)
       other = options.include?(:deep_scrape) ? filter_urls(baseuri, scrape_body(page.response.body), filter_options) : []
-      @uris = (@uris + links + css + images + scripts + script_links + forms + other + [baseuri]).uniq_by { |u| u.normalized_site + u.normalized_path }
+      @uris = (@uris + links + css + images + scripts + script_links + forms + other + [baseuri]).uniq_by { |u| uri_fingerprint(u) }
     end
   end
   private
+  def uri_fingerprint uri
+    [uri.normalized_site + u.normalized_path, u.query_values.keys.sort]
+  end
   def same_url? uri1, uri2
     (uri1.normalized_site + uri1.normalized_path) == (uri2.normalized_site + uri2.normalized_path)
   end
@@ -179,7 +182,7 @@ class LinkCollector
       same_domain?(u.normalized_host, baseuri.normalized_host, options.include?(:collect_entire_domain)) and
       @url_restriction.match(u.to_s)
     end.uniq_by do |u| 
-      u.normalized_site + u.normalized_path
+      uri_fingerprint(u)
     end
   end
   def same_domain? hostA, hostB, entire_domain
