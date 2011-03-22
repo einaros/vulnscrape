@@ -8,8 +8,6 @@
 # Todos:
 #   - Add option which adds a callback and jsonp parameter in case the url ends with .json / .jsonp etc. => URL mutation.
 #   - Something is off with the mime type / script injection check. Returns very bogus false positives for some domains.
-#   - Should also do something with the escaping injection, since it's only valid if we're able to inject a lone backslash + escaped quote.
-#   - Track hash injections?
 
 require 'open-uri'
 require 'rubygems'
@@ -271,6 +269,17 @@ module Scanner
     end
   end
 
+  class HashInjection
+    def run uri, *options
+      test_uri = uri.clone
+      magic = "<sc>al()</sc>"
+      magic_test = /\<sc(\>|&gt;)al\(\)\<\/sc(\>|&gt;)/i
+      page = Page.open("#{uri.to_s}##{magic}")
+      return nil if page.nil? or page.response.body.nil?
+      ["#{uri.to_s}##{magic}"] if (page.response.body =~ magic_test) != nil
+    end
+  end
+
   class ScriptInjection
     def run uri, *options
       test_uri = uri.clone
@@ -486,10 +495,15 @@ class VulnScrape
     end
   end
   private
-  def scan_single_page
+  def build_heuristic_collection
     heuristics = []
     heuristics << :qs_heuristics if @options[:query]
+    heuristics << :hash_heuristics if @options[:hash]
     heuristics << :header_heuristics if @options[:header]
+    heuristics
+  end
+  def scan_single_page
+    heuristics = build_heuristic_collection
     Scanner::check_page(Addressable::URI.parse(@target), *heuristics)
   end
   def scrape_and_scan
@@ -502,9 +516,7 @@ class VulnScrape
     puts "Urls discovered: #{@collector.uris.map{|u|u.site+u.path}.inspect}\n\n"
     puts "#{@collector.uris.count} urls total"
     puts
-    heuristics = []
-    heuristics << :qs_heuristics if @options[:query]
-    heuristics << :header_heuristics if @options[:header]
+    heuristics = build_heuristic_collection
     start_index = @options[:skip]
     @collector.uris[start_index..-1].each do |uri|
       Scanner::check_page(uri, *heuristics)
