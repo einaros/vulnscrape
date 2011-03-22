@@ -156,7 +156,8 @@ class LinkCollector
   end
   private
   def uri_fingerprint uri
-    [uri.normalized_site + u.normalized_path, u.query_values.keys.sort]
+    query = (uri.query_values ? uri.query_values.keys.sort : nil)
+    [uri.normalized_site + uri.normalized_path, query]
   end
   def same_url? uri1, uri2
     (uri1.normalized_site + uri1.normalized_path) == (uri2.normalized_site + uri2.normalized_path)
@@ -539,8 +540,8 @@ class VulnScrape
   end
 end
 
-begin
+#begin
   VulnScrape.new(ARGV).run
-rescue
-  puts $!.to_s
-end
+#rescue
+#  puts $!.to_s
+#end
