@@ -437,6 +437,7 @@ class VulnScrape
       :scraper_regexp => '',
       :url_regexp => '',
       :query => true,
+      :hash => false,
       :header => false,
       :fourohfour => true,
       :single => false,
@@ -466,6 +467,9 @@ class VulnScrape
       end
       opts.on("-h", "--[no-]header", "Include header heuristics. Default: #{@options[:header]}") do |s|
         @options[:header] = s
+      end
+      opts.on("-x", "--[no-]hash", "Include hash heuristics. Default: #{@options[:hash]}") do |s|
+        @options[:hash] = s
       end
       opts.on("-q", "--[no-]query", "Include query heuristics. Default: #{@options[:query]}") do |s|
         @options[:query] = s
