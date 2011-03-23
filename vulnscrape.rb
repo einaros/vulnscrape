@@ -156,8 +156,9 @@ class LinkCollector
   end
   private
   def uri_fingerprint uri
-    query = (uri.query_values ? uri.query_values.keys.sort : nil)
-    [uri.normalized_site + uri.normalized_path, query]
+    uri.to_s.downcase
+    #query = (uri.query_values ? uri.query_values.keys.sort : nil)
+    #[uri.normalized_site + uri.normalized_path, query]
   end
   def same_url? uri1, uri2
     (uri1.normalized_site + uri1.normalized_path) == (uri2.normalized_site + uri2.normalized_path)
