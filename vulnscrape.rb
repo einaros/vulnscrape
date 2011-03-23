@@ -115,13 +115,14 @@ end
 
 class LinkCollector
   attr_reader :uris
-  attr_accessor :max_links, :ignored_extensions, :scraper_restriction, :url_restriction
+  attr_accessor :max_links, :ignored_extensions, :scraper_restriction, :url_restriction, :keep_duplicate_urls
   def initialize
     @uris = []
     @max_links = 1000
     @ignored_extensions = %w{.png .jpg .jpeg .bmp .gif .zip .xap .rar .swf .avi .wmv .mpg .tif .tar .pdf}
     @scraper_restriction = //
     @url_restriction = //
+    @keep_duplicate_urls = false
   end
   def collect url, *options
     options = options.flatten
@@ -156,7 +157,7 @@ class LinkCollector
   end
   private
   def uri_fingerprint uri
-    uri.to_s.downcase
+    keep_duplicate_urls ? uri.to_s.downcase : uri.normalized_site + uri.normalized_path
   end
   def same_url? uri1, uri2
     (uri1.normalized_site + uri1.normalized_path) == (uri2.normalized_site + uri2.normalized_path)
@@ -423,7 +424,7 @@ module Scanner
       to_run.each do |type|
         to_run_options = heuristic_options.select { |k, v| k.to_s == type.to_s }.map { |k, v| v }
         hits = type.new.run(uri, to_run_options)
-        result = hits.empty? ? 'Nothing found' : "Possible vulnerability at\n\t" + hits.join("\n\t")
+        result = hits.nil? || hits.empty? ? 'Nothing found' : "Possible vulnerability at\n\t" + hits.join("\n\t")
         puts "  [#{type}] #{result}"
       end    
       puts
@@ -444,7 +445,8 @@ class VulnScrape
       :single => false,
       :skip => 0,
       :username => nil,
-      :password => nil
+      :password => nil,
+      :keep_duplicate_urls => false
     }
     OptionParser.new do |opts|
       opts.banner = "Usage: vulnscrape.rb [options]"
@@ -465,6 +467,11 @@ class VulnScrape
                                            "Only collect URLs matching REGEX.",
                                            "Typically more restrictive than the scraper restriction.") do |regexp|
         @options[:url_regexp] = regexp
+      end
+      opts.on("-k", "--[no-]keep", "Keep duplicate urls.",
+                                   "Enabling this will make the link collector keep urls with the same host and path.",
+                                   "Default: #{@options[:header]}") do |s|
+        @options[:keep_duplicate_urls] = s
       end
       opts.on("-h", "--[no-]header", "Include header heuristics. Default: #{@options[:header]}") do |s|
         @options[:header] = s
@@ -518,6 +525,7 @@ class VulnScrape
     Page.set_auth(@options[:username], @options[:password]) if @options[:username] and @options[:password]
     @collector.scraper_restriction = Regexp.new(@options[:scraper_regexp], 'i')
     @collector.url_restriction = Regexp.new(@options[:url_regexp], 'i')
+    @collector.keep_duplicate_urls = @options[:keep_duplicate_urls]
     show_crossdomain_policy
     @collector.collect("#{@target}/" + String.random(10)) if @options[:fourohfour]
     @collector.collect(@target, :deep_scrape, :collect_entire_domain)
