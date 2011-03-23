@@ -414,7 +414,8 @@ module Scanner
     options = options.flatten
     qs_heuristics = options.include?(:qs_heuristics) ? [MHTMLInjection, ScriptInjection, ScriptLiteralInjection] : []
     header_heuristics = options.include?(:header_heuristics) ? [HeaderInjection] : []
-    to_run = (header_heuristics + (uri.query ? qs_heuristics : []))
+    hash_heuristics = options.include?(:hash_heuristics) ? [HashInjection] : []
+    to_run = (header_heuristics + (uri.query ? qs_heuristics : []) + hash_heuristics)
     heuristic_options = options.select { |e| e.class == Hash }
     if not to_run.empty?
       puts "Checking: #{uri.site + uri.path}"
