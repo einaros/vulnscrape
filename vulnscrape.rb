@@ -157,7 +157,7 @@ class LinkCollector
   end
   private
   def uri_fingerprint uri
-    keep_duplicate_urls ? uri.to_s.downcase : uri.normalized_site + uri.normalized_path
+    @keep_duplicate_urls ? uri.to_s.downcase : uri.normalized_site + uri.normalized_path
   end
   def same_url? uri1, uri2
     (uri1.normalized_site + uri1.normalized_path) == (uri2.normalized_site + uri2.normalized_path)
@@ -411,6 +411,20 @@ module Scanner
     end
   end
   
+  def self.get_clientaccespolicy_allows url
+    uri = Addressable::URI.parse(url)
+    crossdomain = uri.scheme + "://" + uri.host + "/clientaccesspolicy.xml";
+    page = Page.open(crossdomain)
+    return nil unless page && page.response.code == "200"
+    xml = Nokogiri::XML(page.response.body)
+    xml.xpath("//cross-domain-access/policy").map do |n| 
+      domain = n.xpath("./allow-from/domain").attribute('uri')
+      resources = n.xpath("./grant-to/resource")
+      paths = resources.map { |e| e.attr('path') + (e.attr('include-subpaths') == 'true' ? ' (recursive)' : '') }.join(', ')
+      "#{domain} can access: #{paths}"
+    end
+  end
+  
   def self.check_page uri, *options
     options = options.flatten
     qs_heuristics = options.include?(:qs_heuristics) ? [MHTMLInjection, ScriptInjection, ScriptLiteralInjection] : []
@@ -541,15 +555,21 @@ class VulnScrape
   def show_crossdomain_policy
     crossdom = Scanner::get_crossdomain_allows(@target)
     if crossdom and crossdom.count > 0
-      puts "crossdomain.xml allows swf posts from:"
+      puts "crossdomain.xml allows access from:"
+      crossdom.each { |e| puts "  #{e}" }
+      puts
+    end
+    crossdom = Scanner::get_clientaccespolicy_allows(@target)
+    if crossdom and crossdom.count > 0
+      puts "clientaccesspolicy.xml allows:"
       crossdom.each { |e| puts "  #{e}" }
       puts
     end
   end
 end
 
-#begin
+begin
   VulnScrape.new(ARGV).run
-#rescue
-#  puts $!.to_s
-#end
+rescue
+  puts "Error: #{$!.to_s}"
+end
