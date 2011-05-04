@@ -240,16 +240,7 @@ class LinkCollector
   end
 end
 
-module Scanner
-  def self.content_type? response, body_index
-    return :js if response.content_type.downcase.include?('javascript')
-    m = response.body[0..body_index].match(/.*<(\/?)script/im)
-    return :js if m and m[1].empty?
-    return :js if response.body[0..body_index].match(/.*'\s*javascript:([^']|\\')*\Z/im)
-    return :js if response.body[0..body_index].match(/.*"\s*javascript:([^"]|\\")*\Z/im)
-    :text
-  end
-  
+module Scanner   
   class MHTMLInjection
     def run uri, *options
       test_uri = uri.clone
@@ -272,7 +263,6 @@ module Scanner
       return page.response.code == '200' && (page.response.body[0, index] =~ Regexp.new(magic)) != nil
     end
   end
-
   class HashInjection
     def run uri, *options
       test_uri = uri.clone
@@ -283,7 +273,6 @@ module Scanner
       ["#{uri.to_s}##{magic}"] if (page.response.body =~ magic_test) != nil
     end
   end
-
   class ScriptInjection
     def run uri, *options
       test_uri = uri.clone
@@ -307,7 +296,6 @@ module Scanner
       return 'header' if (page.header =~ test) != nil
     end
   end
-
   class ScriptLiteralInjection
     def run uri, *options
       test_uri = uri.clone
@@ -356,7 +344,6 @@ module Scanner
       end
     end
   end
-
   class HeaderInjection
       def run uri, *options
       headers = ['Accept', 'Accept-Encoding', 'Accept-Language', {'Cookie' => lambda { |v| "foo=#{v}" }}, 'Referer', 'Content-Type', 'User-Agent']
@@ -397,8 +384,7 @@ module Scanner
         end
       end
     end
-  end
-  
+  end  
   def self.get_crossdomain_allows url
     uri = Addressable::URI.parse(url)
     crossdomain = uri.scheme + "://" + uri.host + "/crossdomain.xml";
@@ -409,8 +395,7 @@ module Scanner
       secure = ((v=n.attribute('secure')) && v.value.match(/true/)) || (v == nil && page.url.match(/\Ahttps/i))
       "#{n.attribute('domain').value} #{secure ? 'secure' : ''}"  
     end
-  end
-  
+  end  
   def self.get_clientaccespolicy_allows url
     uri = Addressable::URI.parse(url)
     crossdomain = uri.scheme + "://" + uri.host + "/clientaccesspolicy.xml";
@@ -423,8 +408,7 @@ module Scanner
       paths = resources.map { |e| e.attr('path') + (e.attr('include-subpaths') == 'true' ? ' (recursive)' : '') }.join(', ')
       "#{domain} can access: #{paths}"
     end
-  end
-  
+  end  
   def self.check_page uri, *options
     options = options.flatten
     qs_heuristics = options.include?(:qs_heuristics) ? [MHTMLInjection, ScriptInjection, ScriptLiteralInjection] : []
@@ -444,6 +428,14 @@ module Scanner
       puts
     end
   end
+  def self.content_type? response, body_index
+    return :js if response.content_type.downcase.include?('javascript')
+    m = response.body[0..body_index].match(/.*<(\/?)script/im)
+    return :js if m and m[1].empty?
+    return :js if response.body[0..body_index].match(/.*'\s*javascript:([^']|\\')*\Z/im)
+    return :js if response.body[0..body_index].match(/.*"\s*javascript:([^"]|\\")*\Z/im)
+    :text
+  end
 end
 
 class VulnScrape
@@ -460,7 +452,9 @@ class VulnScrape
       :skip => 0,
       :username => nil,
       :password => nil,
-      :keep_duplicate_urls => false
+      :keep_duplicate_urls => false,
+      :load => nil,
+      :save => nil
     }
     OptionParser.new do |opts|
       opts.banner = "Usage: vulnscrape.rb [options]"
@@ -508,9 +502,17 @@ class VulnScrape
       opts.on("--pass PASSWORD", "Basic auth password") do |s|
         @options[:password] = s
       end
+      opts.on("--load FILENAME", "Load urls from FILENAME",
+                                 "The scraper can save urls using --save.") do |s|
+        @options[:load] = s
+      end
+      opts.on("--save FILENAME", "Save urls to FILENAME",
+                                 "Saved urls can be reloaded later with --load") do |s|
+        @options[:save] = s
+      end
     end.parse!(args)
-    unless @options[:url]
-      raise "-u argument required. try --help for guidance."
+    unless @options[:url] or @options[:load]
+      raise "-u or --load required. try --help for guidance."
     end
   end
   def run
@@ -520,10 +522,28 @@ class VulnScrape
     if @options[:single]
       scan_single_page
     else
-      scrape_and_scan
+      if @options[:load]
+        uris = load_uris @options[:load]
+      else
+        uris = scrape
+      end
+      if @options[:save]
+        save_uris(uris, @options[:save])
+      end
+      scan uris
     end
   end
   private
+  def load_uris filename
+    File.read(filename).split("\n").map { |line| Addressable::URI.parse(line) }
+  end
+  def save_uris uris, filename
+    File.open(filename, 'w') do |file|
+      uris.each do |uri|
+        file.write "#{uri}\n"
+      end
+    end
+  end
   def build_heuristic_collection
     heuristics = []
     heuristics << :qs_heuristics if @options[:query]
@@ -535,7 +555,7 @@ class VulnScrape
     heuristics = build_heuristic_collection
     Scanner::check_page(Addressable::URI.parse(@target), *heuristics)
   end
-  def scrape_and_scan
+  def scrape
     Page.set_auth(@options[:username], @options[:password]) if @options[:username] and @options[:password]
     @collector.scraper_restriction = Regexp.new(@options[:scraper_regexp], 'i')
     @collector.url_restriction = Regexp.new(@options[:url_regexp], 'i')
@@ -546,9 +566,12 @@ class VulnScrape
     puts "Urls discovered: #{@collector.uris.map{|u|u.site+u.path}.inspect}\n\n"
     puts "#{@collector.uris.count} urls total"
     puts
+    @collector.uris
+  end
+  def scan uris
     heuristics = build_heuristic_collection
     start_index = @options[:skip]
-    @collector.uris[start_index..-1].each do |uri|
+    uris[start_index..-1].each do |uri|
       Scanner::check_page(uri, *heuristics)
     end
   end
