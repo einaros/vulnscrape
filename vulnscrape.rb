@@ -17,10 +17,10 @@ require 'net/https'
 require 'uri'
 require 'addressable/uri'
 require 'optparse'
- 
+
 class Array
   def uniq_by
-    h = {}; 
+    h = {};
     inject([]) {|a,x| h[yield(x)] ||= a << x}
   end
 end
@@ -53,13 +53,17 @@ end
 
 class Page
   attr_reader :response, :url, :header
+  @@cookie = nil
   @@username = nil
   @@password = nil
   @@logger = nil
   def initialize response, url
-    @response = response    
+    @response = response
     @url = url
     @header = response.header.to_hash.map { |k, v| "#{k}: #{v}" }.join('\r\n')
+  end
+  def self.set_cookie cookie
+    @@cookie = cookie
   end
   def self.set_auth username, password
     @@username = username
@@ -81,6 +85,7 @@ class Page
         request.basic_auth(@@username, @@password) if @@username and @@password
         header = headers[0]||{}
         header['User-Agent'] ||= 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4'
+        header['Cookie'] = @@cookie
         request.initialize_http_header(header)
         http.use_ssl = https
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
@@ -177,12 +182,12 @@ class LinkCollector
       next nil if @ignored_extensions.include?(uri.extname.downcase)
       uri
     end.select do |u|
-      u != nil and 
-      u.normalized_scheme.match(/https?/) and 
+      u != nil and
+      u.normalized_scheme.match(/https?/) and
       u.host != nil and
       same_domain?(u.normalized_host, baseuri.normalized_host, options.include?(:collect_entire_domain)) and
       @url_restriction.match(u.to_s)
-    end.uniq_by do |u| 
+    end.uniq_by do |u|
       uri_fingerprint(u)
     end
   end
@@ -193,13 +198,13 @@ class LinkCollector
     host.gsub(/(.*\.)?([^\.]*\.[^\.]*)\Z/, '\2')
   end
   def collect_forms doc
-    doc.xpath('//form[@method]').select do |a| 
+    doc.xpath('//form[@method]').select do |a|
       next false if a.attribute('action').nil?
       a.attribute('method').value.casecmp('get') == 0
-    end.map do |a| 
+    end.map do |a|
       url = a.attribute('action').value
       uri = Addressable::URI.parse(url)
-      a.xpath('.//input[@name]').each do |i| 
+      a.xpath('.//input[@name]').each do |i|
         uri.query = (uri.query.nil? ? '' : uri.query + '&') + i.attribute('name').value + '='
       end
       uri.to_s
@@ -240,7 +245,7 @@ class LinkCollector
   end
 end
 
-module Scanner   
+module Scanner
   class MHTMLInjection
     def run uri, *options
       test_uri = uri.clone
@@ -301,7 +306,7 @@ module Scanner
       test_uri = uri.clone
       hits = []
       test_uri.query_values.each do |key, value|
-        qv = uri.query_values.clone        
+        qv = uri.query_values.clone
         vuln = single_run(test_uri, qv, key)
         hits << "#{test_uri.to_s}" if vuln
       end
@@ -327,7 +332,7 @@ module Scanner
       uri.query_values = qv
       page = Page.open(uri.to_s)
       return false if page.nil? or page.response.body.nil?
-      page.response.body.map_match(Regexp.new("('[^\\n']*#{magic}\\\\[^'\\\\]*'|\"[^\\n\"]*#{magic}\\\\[^\"\\\\]*\")")) do |m, o| 
+      page.response.body.map_match(Regexp.new("('[^\\n']*#{magic}\\\\[^'\\\\]*'|\"[^\\n\"]*#{magic}\\\\[^\"\\\\]*\")")) do |m, o|
         Scanner.content_type?(page.response, o)
       end.any? { |e| e == :js }
     end
@@ -336,9 +341,9 @@ module Scanner
         magic = String.random(10) + e
         qv[key] = magic
         uri.query_values = qv
-        page = Page.open(uri.to_s)      
+        page = Page.open(uri.to_s)
         return false if page.nil?
-        page.response.body.map_match(Regexp.new("[^\\n#{e}]*#{magic}[^#{e}]*#{e}")) do |m, o| 
+        page.response.body.map_match(Regexp.new("[^\\n#{e}]*#{magic}[^#{e}]*#{e}")) do |m, o|
           Scanner.content_type?(page.response, o)
         end.any? { |e| e == :js }
       end
@@ -384,31 +389,31 @@ module Scanner
         end
       end
     end
-  end  
+  end
   def self.get_crossdomain_allows url
     uri = Addressable::URI.parse(url)
     crossdomain = uri.scheme + "://" + uri.host + "/crossdomain.xml";
     page = Page.open(crossdomain)
     return nil unless page && page.response.code == "200"
     xml = Nokogiri::XML(page.response.body)
-    xml.xpath("//allow-access-from").map do |n| 
+    xml.xpath("//allow-access-from").map do |n|
       secure = ((v=n.attribute('secure')) && v.value.match(/true/)) || (v == nil && page.url.match(/\Ahttps/i))
-      "#{n.attribute('domain').value} #{secure ? 'secure' : ''}"  
+      "#{n.attribute('domain').value} #{secure ? 'secure' : ''}"
     end
-  end  
+  end
   def self.get_clientaccespolicy_allows url
     uri = Addressable::URI.parse(url)
     crossdomain = uri.scheme + "://" + uri.host + "/clientaccesspolicy.xml";
     page = Page.open(crossdomain)
     return nil unless page && page.response.code == "200"
     xml = Nokogiri::XML(page.response.body)
-    xml.xpath("//cross-domain-access/policy").map do |n| 
+    xml.xpath("//cross-domain-access/policy").map do |n|
       domain = n.xpath("./allow-from/domain").attribute('uri')
       resources = n.xpath("./grant-to/resource")
       paths = resources.map { |e| e.attr('path') + (e.attr('include-subpaths') == 'true' ? ' (recursive)' : '') }.join(', ')
       "#{domain} can access: #{paths}"
     end
-  end  
+  end
   def self.check_page uri, *options
     options = options.flatten
     qs_heuristics = options.include?(:qs_heuristics) ? [MHTMLInjection, ScriptInjection, ScriptLiteralInjection] : []
@@ -424,7 +429,7 @@ module Scanner
         hits = type.new.run(uri, to_run_options)
         result = hits.nil? || hits.empty? ? 'Nothing found' : "Possible vulnerability at\n\t" + hits.join("\n\t")
         puts "  [#{type}] #{result}"
-      end    
+      end
       puts
     end
   end
@@ -502,6 +507,9 @@ class VulnScrape
       opts.on("--pass PASSWORD", "Basic auth password") do |s|
         @options[:password] = s
       end
+      opts.on("--cookie COOKIE", "Cookie string") do |s|
+        @options[:cookie] = s
+      end
       opts.on("--load FILENAME", "Load urls from FILENAME",
                                  "The scraper can save urls using --save.") do |s|
         @options[:load] = s
@@ -557,6 +565,7 @@ class VulnScrape
   end
   def scrape
     Page.set_auth(@options[:username], @options[:password]) if @options[:username] and @options[:password]
+    Page.set_cookie(@options[:cookie]) if @options[:cookie]
     @collector.scraper_restriction = Regexp.new(@options[:scraper_regexp], 'i')
     @collector.url_restriction = Regexp.new(@options[:url_regexp], 'i')
     @collector.keep_duplicate_urls = @options[:keep_duplicate_urls]
