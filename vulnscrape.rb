@@ -379,7 +379,7 @@ module Scanner
       end
       def self.generate_from headers
         headers.map do |h|
-          magic = "<script>alert(#{String.random(5)})</script>"
+          magic = "%3Cscript%3Ealert(#{String.random(5)})%3C/script%3E"
           if h.is_a?(String)
             next InjectionHeader.new(h, magic, nil)
           elsif h.is_a?(Hash)
@@ -388,6 +388,24 @@ module Scanner
           end
         end
       end
+    end
+  end
+  class RefererSplittingInjection
+    def run uri, *options
+      test_uri = uri.clone
+      hits = []
+      header = String.random(5)
+      value = String.random(5)
+      magic = "#{String.random(5)}%0D%0A#{header}: #{value}"
+      vuln = single_run(test_uri.to_s, magic, header, value)
+      hits << test_uri.to_s if vuln
+      hits
+    end
+    private
+    def single_run url, magic, header, value
+      page = Page.open(url, { 'Referer' => magic })
+      return nil if page.nil? or page.response.body.nil?
+      return page.response.header[header] == value
     end
   end
   class ResponseSplittingInjection
@@ -441,7 +459,7 @@ module Scanner
     heuristics = heuristics.flatten
     qs_heuristics = heuristics.include?(:query) ? [ScriptInjection, ScriptLiteralInjection] : []
     qs_heuristics += [MHTMLInjection] if heuristics.include?(:mhtml)
-    qs_heuristics += [ResponseSplittingInjection] if heuristics.include?(:response_splitting)
+    qs_heuristics += [ResponseSplittingInjection, RefererSplittingInjection] if heuristics.include?(:response_splitting)
     plain_heuristics = []
     plain_heuristics += [HeaderInjection] if heuristics.include?(:header)
     plain_heuristics += [HashInjection] if heuristics.include?(:hash)
