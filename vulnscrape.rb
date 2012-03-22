@@ -85,7 +85,7 @@ class Page
         request.basic_auth(@@username, @@password) if @@username and @@password
         header = headers[0]||{}
         header['User-Agent'] ||= 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_6; en-us) AppleWebKit/533.19.4 (KHTML, like Gecko) Version/5.0.3 Safari/533.19.4'
-        header['Cookie'] = @@cookie
+        header['Cookie'] = @@cookie if @@cookie
         request.initialize_http_header(header)
         http.use_ssl = https
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
@@ -390,6 +390,29 @@ module Scanner
       end
     end
   end
+  class ResponseSplittingInjection
+    def run uri, *options
+      test_uri = uri.clone
+      hits = []
+      test_uri.query_values.each do |key, value|
+        qv = uri.query_values.clone
+        header = String.random(5)
+        value = String.random(5)
+        magic = "#{String.random(5)}\r\n#{header}: #{value}"
+        qv[key] = magic
+        test_uri.query_values = qv
+        vuln = single_run(test_uri.to_s, magic, header, value)
+        hits << test_uri.to_s if vuln
+      end
+      hits
+    end
+    private
+    def single_run url, magic, header, value
+      page = Page.open(url)
+      return nil if page.nil? or page.response.body.nil?
+      return page.response.header[header] == value
+    end
+  end
   def self.get_crossdomain_allows url
     uri = Addressable::URI.parse(url)
     crossdomain = uri.scheme + "://" + uri.host + "/crossdomain.xml";
@@ -414,13 +437,16 @@ module Scanner
       "#{domain} can access: #{paths}"
     end
   end
-  def self.check_page uri, *options
-    options = options.flatten
-    qs_heuristics = options.include?(:qs_heuristics) ? [MHTMLInjection, ScriptInjection, ScriptLiteralInjection] : []
-    header_heuristics = options.include?(:header_heuristics) ? [HeaderInjection] : []
-    hash_heuristics = options.include?(:hash_heuristics) ? [HashInjection] : []
-    to_run = (header_heuristics + (uri.query ? qs_heuristics : []) + hash_heuristics)
-    heuristic_options = options.select { |e| e.class == Hash }
+  def self.check_page uri, *heuristics
+    heuristics = heuristics.flatten
+    qs_heuristics = heuristics.include?(:query) ? [ScriptInjection, ScriptLiteralInjection] : []
+    qs_heuristics += [MHTMLInjection] if heuristics.include?(:mhtml)
+    plain_heuristics = []
+    plain_heuristics += [HeaderInjection] if heuristics.include?(:header)
+    plain_heuristics += [HashInjection] if heuristics.include?(:hash)
+    plain_heuristics += [ResponseSplittingInjection] if heuristics.include?(:response_splitting)
+    to_run = plain_heuristics + (uri.query ? qs_heuristics : [])
+    heuristic_options = heuristics.select { |e| e.class == Hash }
     if not to_run.empty?
       puts "Checking: #{uri.site + uri.path}"
       puts "  : Query params: #{uri.query_values.keys.inspect}" if uri.query
@@ -452,6 +478,8 @@ class VulnScrape
       :query => true,
       :hash => false,
       :header => false,
+      :response_splitting => false,
+      :mhtml => false,
       :fourohfour => true,
       :single => false,
       :skip => 0,
@@ -488,6 +516,12 @@ class VulnScrape
       end
       opts.on("-h", "--[no-]header", "Include header heuristics. Default: #{@options[:header]}") do |s|
         @options[:header] = s
+      end
+      opts.on("-p", "--[no-]split", "Include response splitting heuristics. Default: #{@options[:response_splitting]}") do |s|
+        @options[:response_splitting] = s
+      end
+      opts.on("-m", "--[no-]mhtml", "Include MHTML heuristics. Default: #{@options[:mhtml]}") do |s|
+        @options[:mhtml] = s
       end
       opts.on("-x", "--[no-]hash", "Include hash heuristics. Default: #{@options[:hash]}") do |s|
         @options[:hash] = s
@@ -554,9 +588,11 @@ class VulnScrape
   end
   def build_heuristic_collection
     heuristics = []
-    heuristics << :qs_heuristics if @options[:query]
-    heuristics << :hash_heuristics if @options[:hash]
-    heuristics << :header_heuristics if @options[:header]
+    heuristics << :query if @options[:query]
+    heuristics << :mhtml if @options[:mhtml]
+    heuristics << :header if @options[:header]
+    heuristics << :hash if @options[:hash]
+    heuristics << :response_splitting if @options[:response_splitting]
     heuristics
   end
   def scan_single_page
