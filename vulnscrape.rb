@@ -441,10 +441,10 @@ module Scanner
     heuristics = heuristics.flatten
     qs_heuristics = heuristics.include?(:query) ? [ScriptInjection, ScriptLiteralInjection] : []
     qs_heuristics += [MHTMLInjection] if heuristics.include?(:mhtml)
+    qs_heuristics += [ResponseSplittingInjection] if heuristics.include?(:response_splitting)
     plain_heuristics = []
     plain_heuristics += [HeaderInjection] if heuristics.include?(:header)
     plain_heuristics += [HashInjection] if heuristics.include?(:hash)
-    plain_heuristics += [ResponseSplittingInjection] if heuristics.include?(:response_splitting)
     to_run = plain_heuristics + (uri.query ? qs_heuristics : [])
     heuristic_options = heuristics.select { |e| e.class == Hash }
     if not to_run.empty?
