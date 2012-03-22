@@ -50,4 +50,4 @@ all mydomain.com subdomains will eventually be run through the heuristics scanne
 
     ./vulnscrape.rb -u http://xss.progphp.com -h -p -m -x
 
-Includes header heuristics, as demonstrated by a few of the XSS vectors on the progphp test site.
+Includes query string, header, response splitting and hash heuristics, as demonstrated by a few of the XSS vectors on the progphp test site.
