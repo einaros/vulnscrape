@@ -520,7 +520,7 @@ class VulnScrape
       opts.on("-p", "--[no-]split", "Include response splitting heuristics. Default: #{@options[:response_splitting]}") do |s|
         @options[:response_splitting] = s
       end
-      opts.on("-m", "--[no-]mhtml", "Include MHTML heuristics. Default: #{@options[:mhtml]}") do |s|
+      opts.on("-n", "--[no-]mhtml", "Include MHTML heuristics. Default: #{@options[:mhtml]}") do |s|
         @options[:mhtml] = s
       end
       opts.on("-x", "--[no-]hash", "Include hash heuristics. Default: #{@options[:hash]}") do |s|
